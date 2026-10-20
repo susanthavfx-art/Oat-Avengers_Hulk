@@ -160,10 +160,22 @@
   .dock{
     position:absolute; left:0; right:0; bottom:0;
     padding:10px 12px calc(14px + env(safe-area-inset-bottom)) 12px;
-    display:flex; flex-direction:column; gap:10px; align-items:center;
+    display:flex; align-items:flex-end; justify-content:space-between; gap:8px;
     background:linear-gradient(transparent, rgba(0,0,0,.55));
   }
-  .actions{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; width:min(96vw,560px); }
+  .actions{ display:flex; flex-direction:column; gap:8px; width:96px; }
+  #joyBase{
+    pointer-events:auto; width:126px; height:126px; border-radius:50%;
+    border:3px solid rgba(255,255,255,.9); background:rgba(0,0,0,.38);
+    position:relative; touch-action:none; flex:0 0 auto;
+    box-shadow:inset 0 0 0 6px rgba(255,255,255,.12);
+  }
+  #joyKnob{
+    position:absolute; left:50%; top:50%; width:56px; height:56px; margin:-28px 0 0 -28px;
+    border-radius:50%; border:3px solid var(--ink); box-shadow:0 4px 0 var(--ink);
+    background:radial-gradient(circle at 35% 30%, #d6ffb8, var(--green) 70%);
+    display:flex; align-items:center; justify-content:center; font-size:24px;
+  }
   .abtn{
     pointer-events:auto; padding:10px 4px 8px 4px;
     background:linear-gradient(#ffffff,#dcd6ff);
@@ -294,7 +306,7 @@
     <h3>🎮 මොකද කරන්නේ?</h3>
     <div class="step"><span class="n">1</span><span>START button එක touch කරන්න — camera එක on වෙනවා! 📷</span></div>
     <div class="step"><span class="n">2</span><span>Hulk picture එකට camera එක හෙමින් අල්ලන්න 🎯</span></div>
-    <div class="step"><span class="n">3</span><span>Buttons වලින් Hulk ට actions කරවන්න + photo ගන්න! 💥</span></div>
+    <div class="step"><span class="n">3</span><span>🕹️ Joystick එකෙන් Hulk දුවවන්න + buttons වලින් actions! 📸</span></div>
     <div id="targetWrap">
       <img id="targetImg" class="hidden" alt="target">
       <div id="targetPh">🖼️</div>
@@ -330,19 +342,17 @@
     <div id="statusPill"><span class="dot"></span><span id="pillText">🔍 SCANNING…</span></div>
     <button class="iconbtn" id="btnMode" title="Stand / Flat mode">🧍</button>
   </div>
-  <div class="dock">
-    <div class="actions">
-      <button class="btn3d abtn green"  id="btnSmash"><span class="em">💥</span><span class="lb">SMASH</span><span class="si">කඩන්න!</span></button>
-      <button class="btn3d abtn blue"   id="btnJump"><span class="em">🚀</span><span class="lb">JUMP</span><span class="si">පනින්න!</span></button>
-      <button class="btn3d abtn pink"   id="btnSpin"><span class="em">🌀</span><span class="lb">SPIN</span><span class="si">කැරකැවීම!</span></button>
-      <button class="btn3d abtn orange" id="btnAction"><span class="em">▶️</span><span class="lb">ACTION</span><span class="si">හල්ක් ෂෝ!</span></button>
+    <div class="dock">
+      <div id="joyBase" aria-label="Hulk move joystick"><div id="joyKnob">🏃</div></div>
+      <div class="capBlock">
+        <button id="btnCapture" title="Screen capture">📸</button>
+        <span class="capLabel">photo ගන්න</span>
+      </div>
+      <div class="actions">
+        <button class="btn3d abtn pink"   id="btnSpin"><span class="em">🌀</span><span class="lb">SPIN</span><span class="si">කැරකැවීම!</span></button>
+        <button class="btn3d abtn orange" id="btnAction"><span class="em">▶️</span><span class="lb">ACTION</span><span class="si">හල්ක් ෂෝ!</span></button>
+      </div>
     </div>
-    <div class="dockBottom">
-      <span class="capLabel">photo<br>ගන්න</span>
-      <button id="btnCapture" title="Screen capture">📸</button>
-      <span class="capLabel" style="visibility:hidden">x</span>
-    </div>
-  </div>
 </div>
 
 <div id="flash"></div>
@@ -399,7 +409,10 @@ async function pick(list){
 /* ---------- state ---------- */
 let mindarThree=null, renderer=null, scene=null, camera=null, anchor=null;
 let orient=null, actionGroup=null, model=null, mixer=null, actions=[], clock=null;
+let moveGroup=null, yawGroup=null, runAction=null, runT=0, yawCur=0, isMoving=false;
 let proc=null, mode='poster', pendingCapture=false, running=false, firstFound=false;
+const SPEED = 0.55;   // run speed (target-width units per second)
+const joyVec = { x:0, y:0 };
 
 /* Hulk size: 1 = target picture eke width ekata samai; 0.125 = kalate 0.25 eken 50% adu karala */
 const MODEL_SCALE = 0.125;
@@ -448,27 +461,47 @@ function updateProc(dt){
   }
   proc.t += dt;
   const p = Math.min(proc.t / proc.dur, 1);
-  if (proc.type === 'jump'){
-    actionGroup.position.y = 4 * .45 * MODEL_SCALE * p * (1-p);
-    const st = Math.sin(p*Math.PI);
-    actionGroup.scale.set(1 - .10*st, 1 + .20*st, 1 - .10*st);
-  } else if (proc.type === 'spin'){
+  if (proc.type === 'spin'){
     const e = p<.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
     actionGroup.rotation.y = e * Math.PI * 2;
-  } else if (proc.type === 'smash'){
-    if (p < .35){ const q=p/.35; actionGroup.position.y = -.14*MODEL_SCALE*q; actionGroup.scale.setScalar(1 + .10*q); }
-    else {
-      const q=(p-.35)/.65;
-      actionGroup.position.y = (-.14 + .30*Math.sin(Math.min(q*1.6,1)*Math.PI)) * MODEL_SCALE;
-      actionGroup.scale.setScalar(1.10 + .28*Math.sin(q*Math.PI));
-      actionGroup.rotation.z = Math.sin(q*50)*.07*(1-q);
-      if (!proc.fired && q > .25){ proc.fired = true; burst('💥'); burst('💥'); vib(80); }
-    }
   } else if (proc.type === 'roar'){
     actionGroup.scale.setScalar(1 + .22*Math.sin(p*Math.PI));
     actionGroup.rotation.z = Math.sin(p*45)*.05*(1-p);
   }
   if (p >= 1) proc = null;
+}
+
+/* ---------- joystick run movement ---------- */
+function lerpAngle(a, b, t){
+  let d = b - a;
+  while (d >  Math.PI) d -= 2*Math.PI;
+  while (d < -Math.PI) d += 2*Math.PI;
+  return a + d*t;
+}
+function updateMove(dt){
+  if (!moveGroup) return;
+  const mx = joyVec.x, my = -joyVec.y;           // screen up = plane +Y
+  const mag = Math.hypot(mx, my);
+  if (mag > 0.01){
+    isMoving = true;
+    moveGroup.position.x = THREE.MathUtils.clamp(moveGroup.position.x + mx*SPEED*dt, -0.8, 0.8);
+    moveGroup.position.y = THREE.MathUtils.clamp(moveGroup.position.y + my*SPEED*dt, -0.8, 0.8);
+    yawCur = lerpAngle(yawCur, Math.atan2(mx, -my), Math.min(1, dt*10));
+    if (mode === 'stand'){ moveGroup.rotation.z = yawCur; yawGroup.rotation.y = 0; }
+    else                 { yawGroup.rotation.y = yawCur;  moveGroup.rotation.z = 0; }
+    runT += dt;
+    if (runAction && !runAction.isRunning()){
+      actions.forEach(a => { if (a !== runAction) a.stop(); });
+      runAction.reset().fadeIn(.15).play();
+    }
+  } else {
+    isMoving = false;
+    if (runAction && runAction.isRunning()) runAction.fadeOut(.2);
+  }
+  // run clip ekak naththam: podi bounce ekak (procedural run)
+  if (isMoving && !runAction && !proc){
+    actionGroup.position.y = Math.abs(Math.sin(runT*14)) * .05 * MODEL_SCALE;
+  }
 }
 
 /* ---------- glb animation clips ---------- */
@@ -499,6 +532,7 @@ function loop(){
   const dt = Math.min(clock.getDelta(), .1);
   if (mixer) mixer.update(dt);
   updateProc(dt);
+  updateMove(dt);
   renderer.render(scene, camera);
   if (pendingCapture){ pendingCapture = false; finishCapture(); }
 }
@@ -555,14 +589,19 @@ async function startAR(){
     model.position.copy(ctr).multiplyScalar(-s);
 
     actionGroup = new THREE.Group();
+    yawGroup = new THREE.Group();
     orient = new THREE.Group();
-    actionGroup.add(model); orient.add(actionGroup); anchor.group.add(orient);
+    moveGroup = new THREE.Group();
+    actionGroup.add(model); yawGroup.add(actionGroup); orient.add(yawGroup);
+    moveGroup.add(orient); anchor.group.add(moveGroup);
     applyMode();
 
     mixer = new THREE.AnimationMixer(model);
     actions = (gltf.animations || []).map(c => {
       const a = mixer.clipAction(c); a.setLoop(THREE.LoopRepeat, Infinity); return a;
     });
+    runAction = actions.find(a => /run|jog|sprint|walk/i.test(a.getClip().name)) || null;
+    yawCur = 0; runT = 0; isMoving = false;
 
     clock = new THREE.Clock();
     renderer.setAnimationLoop(loop);
@@ -588,13 +627,13 @@ function goHome(){
   el.container.innerHTML = '';
   mindarThree = renderer = scene = camera = anchor = null;
   orient = actionGroup = model = mixer = clock = null;
+  moveGroup = yawGroup = runAction = null; yawCur = 0; runT = 0; isMoving = false;
+  joyVec.x = 0; joyVec.y = 0; joyKnob.style.transform = 'translate(0px, 0px)';
   actions = []; proc = null; firstFound = false; pendingCapture = false;
   hide(el.ui); hide(el.hint); show(el.start);
 }
 
 /* ---------- wire buttons ---------- */
-$('btnSmash').onclick  = () => { playProc('smash', 1.1); burst('💥'); };
-$('btnJump').onclick   = () => { playProc('jump', .9);  burst('⭐'); };
 $('btnSpin').onclick   = () => { playProc('spin', 1.2); burst('🌀'); };
 $('btnAction').onclick = () => playNextClip();
 $('btnCapture').onclick = () => { pendingCapture = true; };
@@ -605,6 +644,37 @@ $('btnMode').onclick = () => {
   applyMode();
   toast(mode === 'stand' ? '🧍 Hulk picture එක උඩ stand වෙනවා!' : '🖼️ Hulk camera එක දිහා බලනවා!');
 };
+
+/* ---------- virtual joystick ---------- */
+const joyBase = $('joyBase'), joyKnob = $('joyKnob');
+function joyUpdate(e){
+  const r = joyBase.getBoundingClientRect();
+  const cx = r.left + r.width/2, cy = r.top + r.height/2;
+  let dx = e.clientX - cx, dy = e.clientY - cy;
+  const max = r.width/2 - 24;
+  const len = Math.hypot(dx, dy);
+  if (len > max){ dx *= max/len; dy *= max/len; }
+  joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+  let nx = dx/max, ny = dy/max;
+  const m = Math.hypot(nx, ny);
+  if (m < 0.18){ nx = 0; ny = 0; } else if (m > 1){ nx /= m; ny /= m; }
+  joyVec.x = nx; joyVec.y = ny;
+}
+function joyReset(){
+  joyVec.x = 0; joyVec.y = 0;
+  joyKnob.style.transform = 'translate(0px, 0px)';
+}
+joyBase.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  try{ joyBase.setPointerCapture(e.pointerId); }catch(err){}
+  joyUpdate(e);
+});
+joyBase.addEventListener('pointermove', (e) => {
+  if (joyBase.hasPointerCapture && joyBase.hasPointerCapture(e.pointerId)) joyUpdate(e);
+});
+joyBase.addEventListener('pointerup', joyReset);
+joyBase.addEventListener('pointercancel', joyReset);
+joyBase.addEventListener('lostpointercapture', joyReset);
 
 /* ---------- boot: start-screen target preview ---------- */
 (async function boot(){
