@@ -340,7 +340,7 @@
   <div class="topbar">
     <button class="iconbtn" id="btnHome" title="Start page එකට">🏠</button>
     <div id="statusPill"><span class="dot"></span><span id="pillText">🔍 SCANNING…</span></div>
-    <button class="iconbtn" id="btnMode" title="Stand / Flat mode">🧍</button>
+    <button class="iconbtn" id="btnMode" title="Stand / Flat mode">🖼️</button>
   </div>
     <div class="dock">
       <div id="joyBase" aria-label="Hulk move joystick"><div id="joyKnob">🏃</div></div>
@@ -410,12 +410,19 @@ async function pick(list){
 let mindarThree=null, renderer=null, scene=null, camera=null, anchor=null;
 let orient=null, actionGroup=null, model=null, mixer=null, actions=[], clock=null;
 let moveGroup=null, yawGroup=null, runAction=null, runT=0, yawCur=0, isMoving=false;
-let proc=null, mode='poster', pendingCapture=false, running=false, firstFound=false;
+let proc=null, mode='stand', pendingCapture=false, running=false, firstFound=false;  // default = picture eka UDA stand wena wa
 const SPEED = 0.55;   // run speed (target-width units per second)
 const joyVec = { x:0, y:0 };
 
 /* Hulk size: 1 = target picture eke width ekata samai; 0.125 = kalate 0.25 eken 50% adu karala */
-const MODEL_SCALE = 0.5;
+const MODEL_SCALE = 0.125;
+
+/* ===== Hulk POSITION offset (target units: picture width = 1) =====
+   X = picture eke right(+) / left(-)
+   Y = picture eke up(+) / down(-)
+   Z = picture eken UDA(+) / pahala(-)   ← Hulk uda hitaganna meka + karanna
+   (uthaharuth: 0.05 = tikak uda, 0 = picture plane eke tama)          */
+const MODEL_OFFSET = { x: 0, y: 0, z: 0.02 };
 
 /* ---------- fun fx ---------- */
 let toastTimer=null;
@@ -444,7 +451,8 @@ function applyMode(){
   orient.updateMatrixWorld(true);
   const b = new THREE.Box3().setFromObject(orient);
   const c = b.getCenter(new THREE.Vector3());
-  orient.position.set(-c.x, -c.y, -b.min.z + 0.02);
+  // X,Y,Z offset: MODEL_OFFSET constant eka edit karanna (auto-center + feet-on-picture ekata add wena wa)
+  orient.position.set(-c.x + MODEL_OFFSET.x, -c.y + MODEL_OFFSET.y, -b.min.z + MODEL_OFFSET.z);
 }
 
 /* ---------- procedural hulk actions ---------- */
