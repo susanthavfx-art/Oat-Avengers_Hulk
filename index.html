@@ -401,8 +401,8 @@ let mindarThree=null, renderer=null, scene=null, camera=null, anchor=null;
 let orient=null, actionGroup=null, model=null, mixer=null, actions=[], clock=null;
 let proc=null, mode='poster', pendingCapture=false, running=false, firstFound=false;
 
-/* Hulk size: 1 = target picture eke width ekata samai; 0.25 = 25% (target width eken 25%) */
-const MODEL_SCALE = 0.25;
+/* Hulk size: 1 = target picture eke width ekata samai; 0.125 = kalate 0.25 eken 50% adu karala */
+const MODEL_SCALE = 0.125;
 
 /* ---------- fun fx ---------- */
 let toastTimer=null;
@@ -549,7 +549,8 @@ async function startAR(){
     const box  = new THREE.Box3().setFromObject(model);
     const size = box.getSize(new THREE.Vector3());
     const ctr  = box.getCenter(new THREE.Vector3());
-    const s = MODEL_SCALE / Math.max(size.y, 1e-4);  // hulk height = 75% of target width
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const s = MODEL_SCALE / Math.max(maxDim, 1e-4);  // lokuuma dimension eka = MODEL_SCALE × target width → too big wenna baa
     model.scale.setScalar(s);
     model.position.copy(ctr).multiplyScalar(-s);
 
