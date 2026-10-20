@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1d8f1d">
+<title>HULK AR! 🥊 — Web AR Kids App</title>
+
+<!--
+  ============================================================
+  HULK AR — single page Web AR app (MindAR image tracking)
+  ------------------------------------------------------------
+  Files needed NEXT TO this index.html (names auto-detected):
+    Model  : Model.glb  (or model.glb / Hulk.glb / hulk-model.glb ...)
+    Target : targets.mind (or marker.mind / target.mind ...)
+    Photo  : target.jpg  (optional, shown on the start screen)
+  Override with URL params:  index.html?mind=xxx.mind&model=yyy.glb
+  Host on GitHub Pages (https) so the camera is allowed.
+  ============================================================
+-->
+
+<style>
+  :root{
+    --ink:#10131a;
+    --green:#3ecf3e;
+    --green-d:#1d8f1d;
+    --green-l:#7dff6a;
+    --purple:#6c2bd9;
+    --purple-d:#3c1478;
+    --yellow:#ffd23e;
+    --red:#ff4d4d;
+    --card:#fff8ec;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; }
+  body{
+    font-family:"Comic Sans MS","Comic Neue","Chalkboard SE","Segoe UI",system-ui,sans-serif;
+    background:#0b0b12; color:var(--ink);
+    overflow:hidden; position:fixed; inset:0; width:100%;
+    touch-action:manipulation;
+    user-select:none; -webkit-user-select:none;
+  }
+  .hidden{ display:none !important; }
+
+  /* ============ 3D comic button style ============ */
+  .btn3d{
+    border:3px solid var(--ink); border-radius:16px;
+    box-shadow:0 5px 0 var(--ink);
+    font-family:inherit; font-weight:700; cursor:pointer;
+    transition:transform .06s ease, box-shadow .06s ease;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    color:var(--ink);
+  }
+  .btn3d:active{ transform:translateY(4px); box-shadow:0 1px 0 var(--ink); }
+  .btn3d .em{ font-size:1.5em; line-height:1; }
+  .btn3d .lb{ font-size:.85em; letter-spacing:.5px; }
+  .btn3d .si{ font-size:.62em; opacity:.75; font-weight:600; }
+
+  /* ============ START SCREEN (kids) ============ */
+  #startScreen{
+    position:fixed; inset:0; z-index:40; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:clamp(8px,2vh,18px); padding:16px; text-align:center;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(125,255,106,.25), transparent 45%),
+      radial-gradient(circle at 85% 80%, rgba(255,210,62,.22), transparent 45%),
+      radial-gradient(rgba(255,255,255,.10) 2px, transparent 2.6px),
+      linear-gradient(160deg, var(--purple) 0%, var(--purple-d) 55%, #14092e 100%);
+    background-size:auto,auto,26px 26px,auto;
+  }
+  .float{ position:absolute; font-size:clamp(28px,7vw,54px); opacity:.85; animation:floaty 6s ease-in-out infinite; filter:drop-shadow(0 4px 0 rgba(0,0,0,.35)); pointer-events:none; }
+  @keyframes floaty{ 0%,100%{ transform:translateY(0) rotate(-8deg);} 50%{ transform:translateY(-22px) rotate(10deg);} }
+
+  .logo{ position:relative; z-index:2; line-height:.95; transform:rotate(-2deg); }
+  .logo .hulk{
+    display:block; font-size:clamp(58px,17vw,120px); font-weight:900; letter-spacing:2px;
+    color:var(--green);
+    text-shadow: 3px 3px 0 var(--ink), -2px -2px 0 var(--ink), 2px -2px 0 var(--ink), -2px 2px 0 var(--ink), 7px 8px 0 rgba(0,0,0,.45);
+  }
+  .logo .ar{
+    display:inline-block; background:var(--yellow); color:var(--ink);
+    border:4px solid var(--ink); border-radius:14px; padding:2px 16px;
+    font-size:clamp(26px,7vw,48px); font-weight:900; transform:rotate(5deg);
+    box-shadow:0 6px 0 var(--ink); margin-top:6px;
+  }
+  .tagline{ position:relative; z-index:2; color:#fff; font-size:clamp(15px,4vw,20px); font-weight:700; text-shadow:2px 2px 0 rgba(0,0,0,.5); }
+
+  .stepCard{
+    position:relative; z-index:2; width:min(92vw,430px);
+    background:var(--card); border:4px solid var(--ink); border-radius:22px;
+    box-shadow:0 8px 0 var(--ink); padding:14px 16px; text-align:left;
+  }
+  .stepCard h3{ font-size:clamp(15px,4vw,18px); margin-bottom:8px; text-align:center; }
+  .step{ display:flex; align-items:center; gap:10px; font-size:clamp(13px,3.6vw,15.5px); font-weight:700; padding:5px 0; }
+  .step .n{
+    flex:0 0 34px; height:34px; border:3px solid var(--ink); border-radius:50%;
+    background:var(--green); display:flex; align-items:center; justify-content:center;
+    font-size:17px; font-weight:900; box-shadow:0 3px 0 var(--ink);
+  }
+  #targetWrap{
+    margin-top:10px; border:3px dashed var(--ink); border-radius:16px; padding:8px;
+    display:flex; align-items:center; gap:10px; background:#fff;
+  }
+  #targetImg{ width:74px; height:74px; object-fit:cover; border:3px solid var(--ink); border-radius:12px; background:#eee; }
+  #targetPh{ width:74px; height:74px; border:3px solid var(--ink); border-radius:12px; background:#e8ffe0; display:flex; align-items:center; justify-content:center; font-size:38px; }
+  #targetWrap .tt{ font-size:clamp(12px,3.4vw,14px); font-weight:800; }
+  #targetWrap .tt small{ display:block; font-weight:600; opacity:.7; }
+
+  #btnStart{
+    position:relative; z-index:2;
+    font-size:clamp(22px,6.4vw,32px); font-weight:900; letter-spacing:1px;
+    padding:16px 46px; border-radius:999px; border:4px solid var(--ink);
+    background:linear-gradient(#7dff6a,#22a022); color:var(--ink);
+    box-shadow:0 8px 0 var(--ink); cursor:pointer;
+    animation:pulse 1.6s ease-in-out infinite;
+  }
+  #btnStart:active{ transform:translateY(6px); box-shadow:0 2px 0 var(--ink); }
+  @keyframes pulse{ 0%,100%{ transform:scale(1);} 50%{ transform:scale(1.06);} }
+  .foot{ position:relative; z-index:2; color:rgba(255,255,255,.75); font-size:12px; font-weight:700; }
+
+  /* ============ LOADING ============ */
+  #loadingOverlay{
+    position:fixed; inset:0; z-index:60; background:rgba(10,10,18,.92);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; color:#fff;
+  }
+  #loadingOverlay .spin{ font-size:74px; animation:rot 1.4s linear infinite; filter:drop-shadow(0 0 18px var(--green)); }
+  @keyframes rot{ to{ transform:rotate(360deg);} }
+  #loadingOverlay .lt{ font-size:clamp(17px,4.6vw,22px); font-weight:800; }
+  #loadingOverlay .ls{ font-size:13px; opacity:.7; }
+
+  /* ============ AR AREA ============ */
+  #arContainer{ position:fixed; inset:0; z-index:1; }
+  #arContainer canvas{ display:block; }
+
+  /* ============ AR UI ============ */
+  #arUI{ position:fixed; inset:0; z-index:20; pointer-events:none; }
+  .topbar{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:max(10px, env(safe-area-inset-top)) 12px 0 12px; gap:8px;
+  }
+  .iconbtn{
+    pointer-events:auto; width:52px; height:52px; border-radius:16px;
+    border:3px solid var(--ink); box-shadow:0 4px 0 var(--ink);
+    background:var(--yellow); font-size:24px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .iconbtn:active{ transform:translateY(3px); box-shadow:0 1px 0 var(--ink); }
+  #statusPill{
+    pointer-events:none; padding:8px 16px; border-radius:999px;
+    border:3px solid var(--ink); box-shadow:0 4px 0 var(--ink);
+    background:#2b2f3a; color:#fff; font-weight:800; font-size:clamp(12px,3.4vw,15px);
+    display:flex; align-items:center; gap:8px;
+  }
+  #statusPill .dot{ width:11px; height:11px; border-radius:50%; background:var(--yellow); animation:blink 1s infinite; }
+  #statusPill.ok{ background:var(--green-d); }
+  #statusPill.ok .dot{ background:var(--green-l); animation:none; }
+  @keyframes blink{ 50%{ opacity:.25;} }
+
+  .dock{
+    position:absolute; left:0; right:0; bottom:0;
+    padding:10px 12px calc(14px + env(safe-area-inset-bottom)) 12px;
+    display:flex; flex-direction:column; gap:10px; align-items:center;
+    background:linear-gradient(transparent, rgba(0,0,0,.55));
+  }
+  .actions{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; width:min(96vw,560px); }
+  .abtn{
+    pointer-events:auto; padding:10px 4px 8px 4px;
+    background:linear-gradient(#ffffff,#dcd6ff);
+  }
+  .abtn.green{ background:linear-gradient(#b8ff9f,#4fd24f); }
+  .abtn.pink{ background:linear-gradient(#ffd7e8,#ff8fb8); }
+  .abtn.blue{ background:linear-gradient(#c9f0ff,#6fc6ff); }
+  .abtn.orange{ background:linear-gradient(#ffe9b8,#ffb84d); }
+  .dockBottom{ display:flex; align-items:center; gap:16px; }
+  #btnCapture{
+    pointer-events:auto; width:86px; height:86px; border-radius:50%;
+    border:4px solid var(--ink); box-shadow:0 6px 0 var(--ink);
+    background:radial-gradient(circle at 35% 30%, #fff 0 18%, var(--red) 19% 100%);
+    font-size:38px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  }
+  #btnCapture:active{ transform:translateY(5px); box-shadow:0 1px 0 var(--ink); }
+  .capLabel{ color:#fff; font-size:12px; font-weight:800; text-shadow:1px 1px 0 #000; }
+
+  /* ============ SCAN HINT ============ */
+  #scanHint{
+    position:fixed; inset:0; z-index:15; display:flex; align-items:center; justify-content:center;
+    pointer-events:none;
+  }
+  #scanHint .box{
+    width:min(78vw,380px); padding:26px 20px; text-align:center;
+    border:4px dashed #fff; border-radius:26px; background:rgba(0,0,0,.45);
+    color:#fff; backdrop-filter:blur(2px);
+    animation:hintPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes hintPulse{ 0%,100%{ transform:scale(1);} 50%{ transform:scale(1.04);} }
+  #scanHint .big{ font-size:56px; animation:floaty 2.4s ease-in-out infinite; }
+  #scanHint .t1{ font-size:clamp(16px,4.4vw,20px); font-weight:900; margin-top:6px; }
+  #scanHint .t2{ font-size:clamp(12px,3.4vw,14px); font-weight:600; opacity:.85; margin-top:4px; }
+
+  /* ============ FLASH / TOAST / BURST ============ */
+  #flash{ position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:70; }
+  #flash.on{ animation:flashA .5s ease-out; }
+  @keyframes flashA{ 0%{opacity:.95;} 100%{opacity:0;} }
+
+  #toastBox{
+    position:fixed; top:calc(14px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%) translateY(-300%);
+    z-index:65; display:flex; align-items:center; gap:10px; opacity:0;
+    background:var(--ink); color:#fff; border:3px solid #fff; border-radius:999px;
+    padding:8px 18px; font-weight:800; font-size:clamp(13px,3.6vw,16px);
+    transition:transform .35s cubic-bezier(.2,1.4,.4,1), opacity .2s; pointer-events:none; max-width:88vw;
+  }
+  #toastBox.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+  #toastImg{ width:40px; height:40px; border-radius:10px; border:2px solid #fff; object-fit:cover; }
+
+  .burst{ position:fixed; z-index:66; font-size:70px; pointer-events:none; animation:burstA .8s ease-out forwards; }
+  @keyframes burstA{ 0%{ transform:scale(.2) rotate(-20deg); opacity:0;} 30%{ opacity:1;} 100%{ transform:scale(1.7) rotate(15deg); opacity:0;} }
+
+  /* ============ ERROR ============ */
+  #errorOverlay{
+    position:fixed; inset:0; z-index:80; background:rgba(10,10,18,.94);
+    display:flex; align-items:center; justify-content:center; padding:18px;
+  }
+  #errorOverlay .card{
+    width:min(94vw,460px); background:var(--card); border:4px solid var(--ink);
+    border-radius:22px; box-shadow:0 8px 0 var(--ink); padding:20px; text-align:center;
+  }
+  #errorOverlay .em{ font-size:56px; }
+  #errorOverlay h2{ margin:6px 0 8px; font-size:22px; }
+  #errMsg{ font-size:14px; font-weight:700; white-space:pre-wrap; }
+  #errList{
+    margin:10px 0; text-align:left; background:#111; color:#9fff8a; border-radius:12px;
+    padding:10px 12px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px;
+    max-height:130px; overflow:auto; white-space:pre-wrap;
+  }
+  .errBtns{ display:flex; gap:10px; justify-content:center; margin-top:6px; }
+  .errBtns .btn3d{ padding:10px 18px; background:var(--green); font-size:15px; }
+  .errBtns .btn3d.gray{ background:#d8d8d8; }
+</style>
+
+<!-- Fallback boot guard (runs even if the CDN modules fail) -->
+<script>
+  window.__startRequested = false;
+  window.__requestStart = function(){
+    window.__startRequested = true;
+    if (window.__startAR) { window.__startAR(); return; }
+    document.getElementById('loadingOverlay').classList.remove('hidden');
+    setTimeout(function(){
+      if (!window.__startAR && window.__startRequested){
+        document.getElementById('loadingOverlay').classList.add('hidden');
+        window.__showError('🌐 Engine load wenna bari una.\nInternet connection ekai browser ekai check karala retry karanna.', null);
+      }
+    }, 12000);
+  };
+  window.__showError = function(msg, list){
+    document.getElementById('loadingOverlay').classList.add('hidden');
+    document.getElementById('errMsg').textContent = msg;
+    var L = document.getElementById('errList');
+    if (list && list.length){ L.textContent = list.join('\n'); L.classList.remove('hidden'); }
+    else { L.classList.add('hidden'); }
+    document.getElementById('errorOverlay').classList.remove('hidden');
+  };
+</script>
+
+<!-- MindAR + three.js (official 1.2.5 / 0.160.0 combo) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
+  }
+}
+</script>
+</head>
+<body>
+
+<!-- ================= START SCREEN ================= -->
+<div id="startScreen">
+  <span class="float" style="top:6%;  left:6%;">💥</span>
+  <span class="float" style="top:12%; right:8%;  animation-delay:-2s;">⭐</span>
+  <span class="float" style="bottom:4%; left:7%; animation-delay:-4s;">🥊</span>
+  <span class="float" style="bottom:10%; right:12%; animation-delay:-1s;">🦾</span>
+  <span class="float" style="top:44%; left:2%;  animation-delay:-3s;">⚡</span>
+  <span class="float" style="top:38%; right:3%; animation-delay:-5s;">💚</span>
+
+  <div class="logo">
+    <span class="hulk">HULK</span>
+    <span class="ar">AR!</span>
+  </div>
+  <div class="tagline">හල්ක් එක්ක AR ලෝකෙට! 🎯📸</div>
+
+  <div class="stepCard">
+    <h3>🎮 මොකද කරන්නේ?</h3>
+    <div class="step"><span class="n">1</span><span>START button එක touch කරන්න — camera එක on වෙනවා! 📷</span></div>
+    <div class="step"><span class="n">2</span><span>Hulk picture එකට camera එක හෙමින් අල්ලන්න 🎯</span></div>
+    <div class="step"><span class="n">3</span><span>Buttons වලින් Hulk ට actions කරවන්න + photo ගන්න! 💥</span></div>
+    <div id="targetWrap">
+      <img id="targetImg" class="hidden" alt="target">
+      <div id="targetPh">🖼️</div>
+      <div class="tt">මේ වගේ picture එකක් හොයන්න!<small>(printed target image එකට camera එක අල්ලන්න)</small></div>
+    </div>
+  </div>
+
+  <button id="btnStart" onclick="window.__requestStart()">🥊 START AR!</button>
+  <div class="foot">Made with 💚 MindAR • camera permission ඕනේ</div>
+</div>
+
+<!-- ================= LOADING ================= -->
+<div id="loadingOverlay" class="hidden">
+  <div class="spin">☢️</div>
+  <div class="lt">HULK එනවා... ⏳</div>
+  <div class="ls">loading model + target • camera on වෙනවා</div>
+</div>
+
+<!-- ================= AR CAMERA + UI ================= -->
+<div id="arContainer"></div>
+
+<div id="scanHint" class="hidden">
+  <div class="box">
+    <div class="big">🎯</div>
+    <div class="t1">Hulk picture එක හොයන්න!</div>
+    <div class="t2">camera එක picture එකට හෙමින් ළං කරන්න • Move slowly</div>
+  </div>
+</div>
+
+<div id="arUI" class="hidden">
+  <div class="topbar">
+    <button class="iconbtn" id="btnHome" title="Start page එකට">🏠</button>
+    <div id="statusPill"><span class="dot"></span><span id="pillText">🔍 SCANNING…</span></div>
+    <button class="iconbtn" id="btnMode" title="Stand / Flat mode">🧍</button>
+  </div>
+  <div class="dock">
+    <div class="actions">
+      <button class="btn3d abtn green"  id="btnSmash"><span class="em">💥</span><span class="lb">SMASH</span><span class="si">කඩන්න!</span></button>
+      <button class="btn3d abtn blue"   id="btnJump"><span class="em">🚀</span><span class="lb">JUMP</span><span class="si">පනින්න!</span></button>
+      <button class="btn3d abtn pink"   id="btnSpin"><span class="em">🌀</span><span class="lb">SPIN</span><span class="si">කැරකැවීම!</span></button>
+      <button class="btn3d abtn orange" id="btnAction"><span class="em">▶️</span><span class="lb">ACTION</span><span class="si">හල්ක් ෂෝ!</span></button>
+    </div>
+    <div class="dockBottom">
+      <span class="capLabel">photo<br>ගන්න</span>
+      <button id="btnCapture" title="Screen capture">📸</button>
+      <span class="capLabel" style="visibility:hidden">x</span>
+    </div>
+  </div>
+</div>
+
+<div id="flash"></div>
+<div id="toastBox"><img id="toastImg" class="hidden" alt=""><span id="toastText"></span></div>
+
+<!-- ================= ERROR ================= -->
+<div id="errorOverlay" class="hidden">
+  <div class="card">
+    <div class="em">😅</div>
+    <h2>ඕප්ස්! වැරදුණා</h2>
+    <div id="errMsg"></div>
+    <div id="errList" class="hidden"></div>
+    <div class="errBtns">
+      <button class="btn3d" onclick="location.reload()">🔁 Retry</button>
+      <button class="btn3d gray" onclick="document.getElementById('errorOverlay').classList.add('hidden');document.getElementById('startScreen').classList.remove('hidden');">🏠 Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MindARThree } from 'mindar-image-three';
+
+/* ---------- dom ---------- */
+const $ = (id) => document.getElementById(id);
+const el = {
+  start:$('startScreen'), loading:$('loadingOverlay'), ui:$('arUI'), hint:$('scanHint'),
+  flash:$('flash'), toast:$('toastBox'), toastText:$('toastText'), toastImg:$('toastImg'),
+  container:$('arContainer'), pill:$('statusPill'), pillText:$('pillText'),
+  targetImg:$('targetImg'), targetPh:$('targetPh'),
+};
+const show = (n) => n.classList.remove('hidden');
+const hide = (n) => n.classList.add('hidden');
+
+/* ---------- asset auto-detection ---------- */
+const MINDS  = ['targets.mind','marker.mind','target.mind','hulk.mind','mind/targets.mind','assets/targets.mind','data/targets.mind'];
+const MODELS = ['Model.glb','model.glb','Hulk.glb','hulk.glb','Hulk Model.glb','hulk model.glb','Model GLB.glb','hulk-model.glb','Hulk-Model.glb','assets/Model.glb','assets/model.glb','model/Model.glb'];
+const IMGS   = ['target.jpg','Target.jpg','target.png','Target.png','target.jpeg','Target.jpeg','marker.jpg','marker.png','hulk.jpg','hulk.png','assets/target.jpg'];
+const qp = new URLSearchParams(location.search);
+const cands = (key, list) => qp.get(key) ? [qp.get(key)] : list;
+
+async function pick(list){
+  for (const c of list){
+    try{
+      const r = await fetch(encodeURI(c), { method:'HEAD', cache:'no-store' });
+      if (r.ok) return c;
+    }catch(e){}
+  }
+  return null;
+}
+
+/* ---------- state ---------- */
+let mindarThree=null, renderer=null, scene=null, camera=null, anchor=null;
+let orient=null, actionGroup=null, model=null, mixer=null, actions=[], clock=null;
+let proc=null, mode='poster', pendingCapture=false, running=false, firstFound=false;
+
+/* ---------- fun fx ---------- */
+let toastTimer=null;
+function toast(msg, imgUrl){
+  el.toastText.textContent = msg;
+  if (imgUrl){ el.toastImg.src = imgUrl; show(el.toastImg); } else hide(el.toastImg);
+  el.toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> el.toast.classList.remove('show'), 2200);
+}
+function burst(emoji){
+  const s = document.createElement('span');
+  s.className = 'burst'; s.textContent = emoji;
+  s.style.left = (18 + Math.random()*54) + 'vw';
+  s.style.top  = (22 + Math.random()*40) + 'vh';
+  document.body.appendChild(s);
+  setTimeout(()=> s.remove(), 850);
+}
+const vib = (ms) => { try{ navigator.vibrate && navigator.vibrate(ms); }catch(e){} };
+
+/* ---------- model orientation ---------- */
+function applyMode(){
+  if (!orient) return;
+  orient.rotation.set(0,0,0);
+  if (mode === 'stand') orient.rotation.x = Math.PI/2;   // stand ON the picture
+  orient.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(orient);
+  const c = b.getCenter(new THREE.Vector3());
+  orient.position.set(-c.x, -c.y, -b.min.z + 0.02);
+}
+
+/* ---------- procedural hulk actions ---------- */
+function playProc(type, dur){ proc = { type, t:0, dur, fired:false }; vib(35); }
+function updateProc(dt){
+  if (!actionGroup) return;
+  if (!proc){
+    const L = THREE.MathUtils.lerp;
+    actionGroup.position.y = L(actionGroup.position.y, 0, .18);
+    actionGroup.rotation.y = L(actionGroup.rotation.y, 0, .18);
+    actionGroup.rotation.z = L(actionGroup.rotation.z, 0, .3);
+    actionGroup.scale.setScalar(L(actionGroup.scale.x, 1, .18));
+    return;
+  }
+  proc.t += dt;
+  const p = Math.min(proc.t / proc.dur, 1);
+  if (proc.type === 'jump'){
+    actionGroup.position.y = 4 * .45 * p * (1-p);
+    const st = Math.sin(p*Math.PI);
+    actionGroup.scale.set(1 - .10*st, 1 + .20*st, 1 - .10*st);
+  } else if (proc.type === 'spin'){
+    const e = p<.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
+    actionGroup.rotation.y = e * Math.PI * 2;
+  } else if (proc.type === 'smash'){
+    if (p < .35){ const q=p/.35; actionGroup.position.y = -.14*q; actionGroup.scale.setScalar(1 + .10*q); }
+    else {
+      const q=(p-.35)/.65;
+      actionGroup.position.y = -.14 + .30*Math.sin(Math.min(q*1.6,1)*Math.PI);
+      actionGroup.scale.setScalar(1.10 + .28*Math.sin(q*Math.PI));
+      actionGroup.rotation.z = Math.sin(q*50)*.07*(1-q);
+      if (!proc.fired && q > .25){ proc.fired = true; burst('💥'); burst('💥'); vib(80); }
+    }
+  } else if (proc.type === 'roar'){
+    actionGroup.scale.setScalar(1 + .22*Math.sin(p*Math.PI));
+    actionGroup.rotation.z = Math.sin(p*45)*.05*(1-p);
+  }
+  if (p >= 1) proc = null;
+}
+
+/* ---------- glb animation clips ---------- */
+let clipIdx = -1;
+function playNextClip(){
+  if (!actions.length){ playProc('roar', 1.2); burst('😤'); toast('😤 HULK ROAR!'); return; }
+  clipIdx = (clipIdx + 1) % actions.length;
+  actions.forEach((a,i)=>{ if (i !== clipIdx) a.stop(); });
+  const a = actions[clipIdx];
+  a.reset(); a.play();
+  vib(40); burst('🎬');
+  toast('▶️ ' + ((a.getClip().name || ('Action ' + (clipIdx+1)))));
+}
+
+/* ---------- target found / lost ---------- */
+function onFound(){
+  hide(el.hint);
+  el.pill.classList.add('ok'); el.pillText.textContent = '✅ TARGET LOCK!';
+  if (!firstFound){ firstFound = true; toast('💥 HULK LOCKED!'); burst('💥'); vib(60); }
+}
+function onLost(){
+  show(el.hint);
+  el.pill.classList.remove('ok'); el.pillText.textContent = '🔍 SCANNING…';
+}
+
+/* ---------- render loop + capture ---------- */
+function loop(){
+  const dt = Math.min(clock.getDelta(), .1);
+  if (mixer) mixer.update(dt);
+  updateProc(dt);
+  renderer.render(scene, camera);
+  if (pendingCapture){ pendingCapture = false; finishCapture(); }
+}
+function finishCapture(){
+  let url;
+  try{ url = renderer.domElement.toDataURL('image/png'); }
+  catch(e){ toast('😅 capture fail una'); return; }
+  el.flash.classList.remove('on'); void el.flash.offsetWidth; el.flash.classList.add('on');
+  vib(50); burst('📸');
+  const a = document.createElement('a');
+  a.href = url; a.download = 'hulk-ar-' + Date.now() + '.png';
+  document.body.appendChild(a); a.click(); a.remove();
+  toast('📸 Photo save una!', url);
+}
+
+/* ---------- start / stop ---------- */
+async function startAR(){
+  if (running) return;
+  running = true;
+  hide(el.start); hide($('errorOverlay')); show(el.loading);
+  try{
+    const mindList  = cands('mind', MINDS);
+    const modelList = cands('model', MODELS);
+    const mindUrl  = await pick(mindList);
+    const modelUrl = await pick(modelList);
+    if (!mindUrl)  throw { asset:'mind',  list:mindList };
+    if (!modelUrl) throw { asset:'model', list:modelList };
+
+    mindarThree = new MindARThree({
+      container: el.container,
+      imageTargetSrc: mindUrl,
+      uiLoading:false, uiScanning:false,
+    });
+    const gltfPromise = new GLTFLoader().loadAsync(modelUrl);
+    await mindarThree.start();
+    const gltf = await gltfPromise;
+    renderer = mindarThree.renderer; scene = mindarThree.scene; camera = mindarThree.camera;
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x556655, 2.2));
+    const dir = new THREE.DirectionalLight(0xffffff, 2.4);
+    dir.position.set(1.5, 2.5, 3); scene.add(dir);
+
+    anchor = mindarThree.addAnchor(0);
+    anchor.onTargetFound = onFound;
+    anchor.onTargetLost  = onLost;
+
+    model = gltf.scene;
+    const box  = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const ctr  = box.getCenter(new THREE.Vector3());
+    const s = 1.0 / Math.max(size.y, 1e-4);      // hulk height = target width
+    model.scale.setScalar(s);
+    model.position.copy(ctr).multiplyScalar(-s);
+
+    actionGroup = new THREE.Group();
+    orient = new THREE.Group();
+    actionGroup.add(model); orient.add(actionGroup); anchor.group.add(orient);
+    applyMode();
+
+    mixer = new THREE.AnimationMixer(model);
+    actions = (gltf.animations || []).map(c => {
+      const a = mixer.clipAction(c); a.setLoop(THREE.LoopRepeat, Infinity); return a;
+    });
+
+    clock = new THREE.Clock();
+    renderer.setAnimationLoop(loop);
+
+    hide(el.loading); show(el.ui); onLost();
+    toast('🥊 HULK ready!');
+  }catch(err){
+    running = false;
+    if (err && err.asset){
+      const what = err.asset === 'mind'
+        ? 'Target file එක හම්බවුණේ නෑ! (.mind) index.html එක ළගම තියෙන්න ඕනේ.'
+        : 'Model file එක හම්බවුණේ නෑ! (.glb) index.html එක ළගම තියෙන්න ඕනේ.';
+      window.__showError('😅 ' + what + '\nමේ names වලින් file එකක් upload කරලා තියෙන්න:', err.list.map(x=>'• '+x));
+    } else {
+      window.__showError('😅 AR start කරද්දි වැරදුණා:\n' + (err && err.message ? err.message : err), null);
+    }
+  }
+}
+function goHome(){
+  running = false;
+  try{ renderer && renderer.setAnimationLoop(null); }catch(e){}
+  try{ mindarThree && mindarThree.stop(); }catch(e){}
+  el.container.innerHTML = '';
+  mindarThree = renderer = scene = camera = anchor = null;
+  orient = actionGroup = model = mixer = clock = null;
+  actions = []; proc = null; firstFound = false; pendingCapture = false;
+  hide(el.ui); hide(el.hint); show(el.start);
+}
+
+/* ---------- wire buttons ---------- */
+$('btnSmash').onclick  = () => { playProc('smash', 1.1); burst('💥'); };
+$('btnJump').onclick   = () => { playProc('jump', .9);  burst('⭐'); };
+$('btnSpin').onclick   = () => { playProc('spin', 1.2); burst('🌀'); };
+$('btnAction').onclick = () => playNextClip();
+$('btnCapture').onclick = () => { pendingCapture = true; };
+$('btnHome').onclick = goHome;
+$('btnMode').onclick = () => {
+  mode = (mode === 'poster') ? 'stand' : 'poster';
+  $('btnMode').textContent = (mode === 'stand') ? '🖼️' : '🧍';
+  applyMode();
+  toast(mode === 'stand' ? '🧍 Hulk picture එක උඩ stand වෙනවා!' : '🖼️ Hulk camera එක දිහා බලනවා!');
+};
+
+/* ---------- boot: start-screen target preview ---------- */
+(async function boot(){
+  window.__startAR = startAR;
+  const img = await pick(IMGS);
+  if (img){ el.targetImg.src = img; show(el.targetImg); hide(el.targetPh); }
+  if (window.__startRequested) startAR();
+})();
+</script>
+</body>
+</html>
