@@ -431,7 +431,7 @@ const SPEED = 0.55;   // run speed (target-width units per second)
 const joyVec = { x:0, y:0 };
 
 /* Hulk size: 1 = target picture eke width ekata samai; 0.125 = kalate 0.25 eken 50% adu karala */
-const MODEL_SCALE = 0.125;
+const MODEL_SCALE = 0.5;
 
 /* ===== Hulk POSITION offset (target units: picture width = 1) =====
    X = picture eke right(+) / left(-)
@@ -504,7 +504,14 @@ function lerpAngle(a, b, t){
 }
 function updateMove(dt){
   if (!moveGroup) return;
-  const mx = joyVec.x, my = -joyVec.y;           // screen up = plane +Y
+  let mx = joyVec.x, my = -joyVec.y;             // screen up = plane +Y
+  // GAME eke 'seek' state eke: joystick eka nidahama nams Hulk AUTO-RUN enemy wa ekata
+  if (gameOn && gameState === 'seek' && enemy && Math.hypot(joyVec.x, joyVec.y) < 0.01){
+    const dx = enemyPos.x - moveGroup.position.x;
+    const dy = enemyPos.y - moveGroup.position.y;
+    const d = Math.hypot(dx, dy);
+    if (d > 0.02){ mx = dx/d; my = dy/d; }
+  }
   const mag = Math.hypot(mx, my);
   const wantRun = mag > 0.01 && (!gameOn || gameState === 'seek');
   if (mag > 0.01){
@@ -601,7 +608,7 @@ function toggleGame(){
   b.style.background = gameOn ? 'linear-gradient(#b8ff9f,#4fd24f)' : '';
   if (gameOn){
     score = 0; updateScore(); show($('scoreChip'));
-    toast('🎮 GAME ON! Joystick eken enemy wa ekata dawala catch karanna!');
+    toast('🎮 GAME ON! Hulk auto-run enemy wa ekata! Joystick eken oyatama dawanna puluwan!');
     spawnEnemy();
   } else {
     hide($('scoreChip'));
