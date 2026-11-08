@@ -1,0 +1,8 @@
+# local dev tooling (headless browser harness, node_modules, screenshots)
+.devtools/
+node_modules/
+*.log
+
+# OS noise
+.DS_Store
+Thumbs.db

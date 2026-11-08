@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Best loop window</title></head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '../vendor/three/addons/loaders/GLTFLoader.js';
+
+const p = new URLSearchParams(location.search);
+const clipNamePart = p.get('clip') || 'dash';
+const N = +(p.get('n') || 40);
+
+const gltf = await new GLTFLoader().loadAsync('../Model.glb');
+const model = gltf.scene;
+const bones = {};
+model.traverse(o => { if (o.isBone) bones[o.name] = o; });
+const keys = Object.keys(bones).filter(k => !/Finger|Twist|trapezial|sterno|wp_|mouth/.test(k));
+
+const clip = gltf.animations.find(c => c.name.includes(clipNamePart));
+const dur = clip.duration;
+const mixer = new THREE.AnimationMixer(model);
+const action = mixer.clipAction(clip);
+action.play();
+
+const poses = [];
+for (let i = 0; i < N; i++) {
+  const t = (i / N) * dur; // wrap-free sampling 0..dur
+  mixer.setTime(dur === 0 ? 0 : Math.min(t, dur - 1e-4));
+  model.updateMatrixWorld(true);
+  const arr = [];
+  for (const k of keys) { const v = new THREE.Vector3(); bones[k].getWorldPosition(v); arr.push(v.x, v.y, v.z); }
+  poses.push(arr);
+}
+const dist = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; } return Math.sqrt(s / (a.length / 3)); };
+
+const pairs = [];
+for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+  const span = (j - i) / N;
+  if (span < 0.15 || span > 0.65) continue;
+  pairs.push({ i, j, tA: +(i / N * dur).toFixed(3), tB: +(j / N * dur).toFixed(3), span: +span.toFixed(3), d: +dist(poses[i], poses[j]).toFixed(4) });
+}
+pairs.sort((a, b) => a.d - b.d);
+window.__info = { clip: clip.name, dur, keys: keys.length, best: pairs.slice(0, 12), worstSeam: dist(poses[0], poses[N - 1]).toFixed(4) };
+window.__ready = true;
+</script>
+</body>
+</html>

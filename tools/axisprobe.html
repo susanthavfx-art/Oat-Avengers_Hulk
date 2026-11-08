@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Axis Probe</title>
+<style>html,body{margin:0;background:#111;overflow:hidden}canvas{display:block}</style>
+</head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '../vendor/three/addons/loaders/GLTFLoader.js';
+
+const p = new URLSearchParams(location.search);
+const BONES = (p.get('bones') || 'Bip001 L UpperArm_023,Bip001 L Forearm_024,Bip001 L Thigh_05,Bip001 L Calf_06,Bip001 Spine1_017').split(',');
+const ANGLE = +(p.get('ang') || 45) * Math.PI / 180;
+const VIEW = p.get('view') || 'side';
+const TILE = 250;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(1);
+renderer.setSize(TILE * 4, TILE * BONES.length, false);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2a3a48);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x556677, 2.6));
+const dl = new THREE.DirectionalLight(0xffffff, 1.5); dl.position.set(3, 5, -4); scene.add(dl);
+scene.add(new THREE.GridHelper(6, 12, 0x8899aa, 0x556677));
+// axis markers: red=+X, green=+Y, blue=+Z(forward)
+const arrow = (c, dir) => {
+  const a = new THREE.ArrowHelper(new THREE.Vector3(...dir), new THREE.Vector3(0, 0.02, 0), 1.6, c, 0.25, 0.15);
+  scene.add(a);
+};
+arrow(0xff3322, [1, 0, 0]); arrow(0x33ff44, [0, 1, 0]); arrow(0x3388ff, [0, 0, 1]);
+
+const gltf = await new GLTFLoader().loadAsync('../Model.glb');
+const model = gltf.scene; scene.add(model);
+const bones = {};
+model.traverse(o => { if (o.isBone) bones[o.name] = o; });
+const rest = {};
+for (const k in bones) rest[k] = bones[k].quaternion.clone();
+const restPos = {};
+for (const k in bones) restPos[k] = bones[k].position.clone();
+
+// convert world axis -> parent-space axis (at rest)
+const qParentWorld = {};
+model.updateMatrixWorld(true);
+model.traverse(o => {
+  if (o.isBone) {
+    const pw = new THREE.Quaternion();
+    if (o.parent) o.parent.getWorldQuaternion(pw);
+    qParentWorld[o.name] = pw;
+  }
+});
+
+function rotWorldAxis(boneName, axisWorld, angle) {
+  const b = bones[boneName];
+  if (!b) return;
+  const inv = qParentWorld[boneName].clone().invert();
+  const ax = axisWorld.clone().applyQuaternion(inv).normalize();
+  const dq = new THREE.Quaternion().setFromAxisAngle(ax, angle);
+  b.quaternion.copy(rest[boneName]).premultiply(dq);
+}
+
+const axes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
+const camPos = { front: [0, 1.1, -4], side: [4, 1.1, 0], back: [0, 1.1, 4], q: [3, 1.7, -3] }[VIEW];
+const cam = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+cam.position.set(...camPos); cam.lookAt(0, 1.0, 0);
+cam.updateProjectionMatrix();
+
+BONES.forEach((bn, r) => {
+  [null, ...axes].forEach((ax, c) => {
+    for (const k in bones) bones[k].quaternion.copy(rest[k]);
+    if (ax) rotWorldAxis(bn, ax, ANGLE);
+    model.updateMatrixWorld(true);
+    const y = (BONES.length - 1 - r) * TILE;
+    renderer.setViewport(c * TILE, y, TILE, TILE);
+    renderer.setScissor(c * TILE, y, TILE, TILE);
+    renderer.setScissorTest(true);
+    renderer.render(scene, cam);
+  });
+});
+window.__info = { bones: BONES, angleDeg: ANGLE * 180 / Math.PI, view: VIEW, cols: ['rest', '+X', '+Y', '+Z'] };
+window.__ready = true;
+</script>
+</body>
+</html>

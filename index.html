@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#0d0b12" />
+<meta name="description" content="Hulk Smash Run — an endless 3D runner through a destroyed city. Smash crates and rocks, collect coins and stars, jump the rubble and dodge the rockets." />
+<title>Hulk Smash Run — Endless Destroyed City Runner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="./styles/game.css" />
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+
+  <!-- cinematic edges -->
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="scanlines" aria-hidden="true"></div>
+  <div id="hurt-flash" aria-hidden="true"></div>
+
+  <!-- ============================ HUD ============================ -->
+  <header class="hud-top">
+    <div class="hud-left">
+      <div class="score-block">
+        <span class="label">SCORE</span>
+        <span id="hud-score" class="value">0</span>
+        <span class="best">BEST <b id="hud-best">0</b></span>
+      </div>
+      <div id="hud-combo" class="combo">
+        <span id="hud-combo-value">0 HIT</span>
+        <div class="combo-bar"><i id="hud-combo-fill"></i></div>
+      </div>
+    </div>
+
+    <div class="hud-center">
+      <div class="pill" title="Coins">
+        <svg viewBox="0 0 24 24" class="ico coin"><circle cx="12" cy="12" r="9" /><text x="12" y="16" text-anchor="middle">H</text></svg>
+        <b id="hud-coins">0</b>
+      </div>
+      <div class="pill" title="Stars">
+        <svg viewBox="0 0 24 24" class="ico star"><path d="M12 2l2.9 6.3 6.9.8-5 4.8 1.3 6.8L12 17.5 5.9 20.7 7.2 13.9 2.2 9.1l6.9-.8z" /></svg>
+        <b id="hud-stars">0</b>
+      </div>
+      <div class="pill dist" title="Distance">
+        <svg viewBox="0 0 24 24" class="ico dist"><path d="M4 20h4l3-11h2l3 11h4" fill="none" stroke-width="2" /></svg>
+        <b id="hud-dist">0m</b>
+      </div>
+    </div>
+
+    <div class="hud-right">
+      <div id="hud-hearts" class="hearts" aria-label="Health">
+        <i></i><i></i><i></i>
+      </div>
+      <div id="hud-rage-wrap" class="meter">
+        <span class="label">SPEED</span>
+        <div class="meter-bar"><i id="hud-speed-fill"></i></div>
+        <span id="hud-bonus" class="bonus"></span>
+      </div>
+      <button id="btn-sound" class="icon-btn" type="button" aria-label="Mute sound">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="snd-on" d="M4 9v6h4l5 4V5L8 9H4zm12.5-.5a5 5 0 010 7M19 5a9 9 0 010 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="snd-off" d="M4 9v6h4l5 4V5L8 9H4zM17 9l4 6M21 9l-4 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="5" width="3.6" height="14" rx="1.2" fill="currentColor"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.2" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div id="hud-hint" class="hint">
+    <kbd>←</kbd><kbd>→</kbd> move &nbsp; <kbd>↑</kbd> jump &nbsp; <kbd>↓</kbd> smash
+  </div>
+
+  <div id="popups" class="popups" aria-hidden="true"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="stage-banner" class="stage-banner"></div>
+
+  <!-- touch controls -->
+  <div class="touch-controls" aria-hidden="false">
+    <div class="tc-left">
+      <button class="tc-btn" data-action="left" type="button" aria-label="Move left">◀</button>
+      <button class="tc-btn" data-action="right" type="button" aria-label="Move right">▶</button>
+    </div>
+    <div class="tc-right">
+      <button class="tc-btn smash" data-action="smash" type="button" aria-label="Smash">SMASH</button>
+      <button class="tc-btn jump" data-action="jump" type="button" aria-label="Jump">JUMP</button>
+    </div>
+  </div>
+
+  <!-- ========================== SCREENS ========================== -->
+  <section id="loading" class="screen loading is-open">
+    <div class="loading-inner">
+      <div class="brand small">HULK<span>SMASH RUN</span></div>
+      <div class="load-track"><i id="loading-fill"></i></div>
+      <p class="load-label">Waking the Hulk…</p>
+    </div>
+  </section>
+
+  <section id="screen-start" class="screen" aria-hidden="true">
+    <div class="panel start-panel">
+      <div class="brand">HULK<span>SMASH RUN</span></div>
+      <p class="tagline">The city is dust. The road is endless.<br />Nothing stands in the way of <b class="green">HULK</b>.</p>
+      <button id="btn-start" class="cta" type="button">
+        <span>START RUN</span>
+        <small>press ENTER / SPACE</small>
+      </button>
+      <ul class="legend">
+        <li><span class="lg-move">← →</span> Switch lane</li>
+        <li><span class="lg-jump">↑ / SPACE</span> Jump obstacles</li>
+        <li><span class="lg-smash">↓ / F</span> Smash crates &amp; rocks</li>
+      </ul>
+      <p class="tip">Swipe on touch · tap to jump · hold to smash</p>
+    </div>
+  </section>
+
+  <section id="screen-pause" class="screen" aria-hidden="true">
+    <div class="panel">
+      <h2>PAUSED</h2>
+      <p class="tagline">Even Hulk needs a breather.</p>
+      <div class="row">
+        <button id="btn-resume" class="cta" type="button"><span>RESUME</span></button>
+        <button id="btn-quit" class="cta ghost" type="button"><span>QUIT</span></button>
+      </div>
+    </div>
+  </section>
+
+  <section id="screen-over" class="screen" aria-hidden="true">
+    <div class="panel over-panel">
+      <h2 class="over-title">RUN OVER</h2>
+      <p class="tagline">The city held. Barely.</p>
+      <div class="stats">
+        <div><span>SCORE</span><b id="final-score">0</b></div>
+        <div><span>DISTANCE</span><b id="final-distance">0 m</b></div>
+        <div><span>COINS</span><b id="final-coins">0</b></div>
+        <div><span>STARS</span><b id="final-stars">0</b></div>
+        <div class="best-row"><span>BEST</span><b id="final-best">0</b></div>
+      </div>
+      <button id="btn-retry" class="cta" type="button">
+        <span>RUN AGAIN</span>
+        <small>ENTER</small>
+      </button>
+    </div>
+  </section>
+
+  <div id="fatal" class="fatal" hidden></div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+  import { Game } from './src/game/game.js';
+
+  const canvas = document.getElementById('game');
+  let game;
+  try {
+    game = new Game(canvas);
+    window.__game = game;
+    await game.boot();
+  } catch (err) {
+    console.error(err);
+    const fatal = document.getElementById('fatal');
+    if (fatal) {
+      fatal.hidden = false;
+      fatal.innerHTML = `<h2>Could not start</h2><pre>${String(err && err.message || err)}</pre>
+        <p>This game needs WebGL2. Try a recent Chrome, Edge, Firefox or Safari with hardware acceleration enabled.</p>`;
+    }
+    document.getElementById('loading')?.classList.add('is-gone');
+  }
+
+  // ENTER anywhere starts / restarts
+  window.addEventListener('keydown', (e) => {
+    if (!game) return;
+    if (e.code === 'Enter' && (game.state === 'ready' || game.state === 'over')) game.startRun();
+  });
+  // first click unlocks audio
+  window.addEventListener('pointerdown', () => game && game.audio.init(), { once: true });
+</script>
+</body>
+</html>

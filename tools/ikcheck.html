@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>IK Check</title></head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { createRenderer, createScene, createLighting } from '../src/game/renderer.js';
+import { Hero } from '../src/game/hero.js';
+
+const canvas = document.createElement('canvas');
+document.body.appendChild(canvas);
+const renderer = createRenderer(canvas);
+const scene = createScene();
+scene.fog = null;
+const hero = new Hero(scene);
+await hero.load();
+
+const out = { rig: {hipY: hero.rig.hipY, ankleY: hero.rig.ankleY, stanceL: hero.rig.stanceL, stanceR: hero.rig.stanceR, legs: Object.fromEntries(Object.entries(hero.rig.legs).map(([k,v])=>[k,{thighLen:v.thighLen,calfLen:v.calfLen,thighRest:v.thighRest,calfRest:v.calfRest,swing:v.swing,hip:v.hip,ankle:v.ankle}]))}, phases: [] };
+const v = new THREE.Vector3();
+const W = (b) => { b.getWorldPosition(v); return [+(v.x / 0.78).toFixed(3), +(v.y / 0.78).toFixed(3), +(v.z / 0.78).toFixed(3)]; };
+
+for (const p of [0, 0.2, 0.4, 0.6, 0.8]) {
+  hero.runPhase = p;
+  hero.airBlend = 0;
+  hero.speedRatio = 0.8;
+  hero.resetPose();
+  hero.model.position.set(0, 0, 0);
+  hero.model.updateMatrixWorld(true);
+  const rest = { hipL: W(hero.bones.lThigh), kneeL: W(hero.bones.lCalf), ankL: W(hero.bones.lFoot), ankR: W(hero.bones.rFoot), head: W(hero.bones.head), pelvis: W(hero.bones.pelvis) };
+  hero.poseRun();
+  hero.model.updateMatrixWorld(true);
+  const posed = { hipL: W(hero.bones.lThigh), kneeL: W(hero.bones.lCalf), ankL: W(hero.bones.lFoot), ankR: W(hero.bones.rFoot), head: W(hero.bones.head), pelvis: W(hero.bones.pelvis) };
+  out.phases.push({ p, rest, posed });
+}
+window.__info = out;
+window.__ready = true;
+</script>
+</body>
+</html>

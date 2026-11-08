@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Loop seam</title></head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '../vendor/three/addons/loaders/GLTFLoader.js';
+
+const gltf = await new GLTFLoader().loadAsync('../Model.glb');
+const model = gltf.scene;
+const bones = {};
+model.traverse(o => { if (o.isBone) bones[o.name] = o; });
+
+function samplePose(clip, t) {
+  const mixer = new THREE.AnimationMixer(model);
+  const a = mixer.clipAction(clip);
+  a.play(); mixer.setTime(t);
+  model.updateMatrixWorld(true);
+  const out = {};
+  for (const k in bones) { const v = new THREE.Vector3(); bones[k].getWorldPosition(v); out[k] = v.clone(); }
+  return out;
+}
+
+const report = {};
+for (const clip of gltf.animations) {
+  const dur = clip.duration;
+  // find clip start offset (clips may start at t>0)
+  let t0 = Infinity, t1 = -Infinity;
+  clip.tracks.forEach(tr => { t0 = Math.min(t0, tr.times[0]); t1 = Math.max(t1, tr.times[tr.times.length - 1]); });
+  const a = samplePose(clip, t0 + 0.0001);
+  const b = samplePose(clip, t1 - 0.0001);
+  let maxD = 0, which = '';
+  for (const k in a) { const d = a[k].distanceTo(b[k]); if (d > maxD) { maxD = d; which = k; } }
+  // also check whether root translation has horizontal drift
+  report[clip.name] = { dur: +dur.toFixed(3), trackStart: +t0.toFixed(3), trackEnd: +t1.toFixed(3), loopSeamMaxBoneDelta: +maxD.toFixed(4), worstBone: which };
+}
+window.__info = report;
+window.__ready = true;
+</script>
+</body>
+</html>

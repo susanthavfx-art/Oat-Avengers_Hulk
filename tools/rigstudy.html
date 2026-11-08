@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Hulk Rig Study</title>
+<style>
+  html,body{margin:0;height:100%;background:#1a1a1f;overflow:hidden}
+  canvas{display:block}
+  #hud{position:fixed;left:8px;top:8px;color:#9f9;font:12px monospace;white-space:pre;background:#000a;padding:8px;z-index:10}
+</style>
+</head>
+<body>
+<div id="hud"></div>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '../vendor/three/addons/loaders/GLTFLoader.js';
+import { SkeletonHelper } from 'three';
+
+const W = 1400, H = 900;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a1f);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2.2));
+const d = new THREE.DirectionalLight(0xffffff, 2.0); d.position.set(3, 6, 5); scene.add(d);
+const cam = new THREE.PerspectiveCamera(35, W / H, 0.1, 100);
+
+const loader = new GLTFLoader();
+const gltf = await loader.loadAsync('../Model.glb');
+const model = gltf.scene;
+scene.add(model);
+
+const box = new THREE.Box3().setFromObject(model);
+const size = new THREE.Vector3(); box.getSize(size);
+const center = new THREE.Vector3(); box.getCenter(center);
+
+const skinned = [];
+model.traverse(o => { if (o.isSkinnedMesh) skinned.push(o); });
+
+// find bones
+const bones = {};
+model.traverse(o => { if (o.isBone) bones[o.name] = o; });
+
+const helper = new SkeletonHelper(model);
+helper.material.linewidth = 2;
+scene.add(helper);
+helper.visible = false;
+
+const grid = new THREE.GridHelper(10, 20, 0x666666, 0x333333);
+scene.add(grid);
+
+const clips = {};
+gltf.animations.forEach(c => clips[c.name] = c);
+let mixer = new THREE.AnimationMixer(model);
+let current = null;
+
+const params = new URLSearchParams(location.search);
+const clipName = params.get('clip') || '';
+const t = parseFloat(params.get('t') || '0');
+
+if (clipName && clips[clipName]) {
+  const act = mixer.clipAction(clips[clipName]);
+  act.play();
+  mixer.setTime(t);
+}
+
+if (params.get('skel') === '1') helper.visible = true;
+
+// expose measurable data
+const info = {
+  size: size.toArray().map(v => +v.toFixed(3)),
+  center: center.toArray().map(v => +v.toFixed(3)),
+  min: box.min.toArray().map(v => +v.toFixed(3)),
+  max: box.max.toArray().map(v => +v.toFixed(3)),
+  clips: Object.keys(clips).map(k => k + ':' + clips[k].duration.toFixed(2)),
+  skinnedMeshCount: skinned.length,
+  boneCount: Object.keys(bones).length,
+};
+window.__info = info;
+document.getElementById('hud').textContent = JSON.stringify(info, null, 2);
+
+// camera
+const view = params.get('view') || 'front';
+const dist = 4.2;
+const views = {
+  front: [0, 1.5, -dist],
+  back: [0, 1.5, dist],
+  side: [dist, 1.5, 0],
+  three4: [dist * 0.75, 2.4, -dist * 0.75],
+  top: [0.01, 6, 0],
+};
+const p = views[view];
+cam.position.set(p[0], p[1], p[2]);
+cam.lookAt(0, 1.1, 0);
+renderer.render(scene, cam);
+window.__ready = true;
+</script>
+</body>
+</html>

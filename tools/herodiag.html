@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Hero Diag</title>
+<style>html,body{margin:0;background:#151019;overflow:hidden}canvas{display:block}</style>
+</head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { createRenderer, createScene, createLighting } from '../src/game/renderer.js';
+import { Hero } from '../src/game/hero.js';
+
+const p = new URLSearchParams(location.search);
+const view = p.get('view') || 'side';
+const tile = +(p.get('tile') || 300);
+const rows = (p.get('rows') || 'rest,legs,arms,spine').split(',');
+const phases = (p.get('times') || '0,0.25,0.5,0.75').split(',').map(Number);
+
+const canvas = document.createElement('canvas');
+document.body.appendChild(canvas);
+const renderer = createRenderer(canvas);
+const scene = createScene();
+scene.background = new THREE.Color(0x2a3542);
+scene.fog = null;
+const L = createLighting(scene);
+L.hemi.intensity = 2.2;
+L.sun.intensity = 2.4;
+L.sun.position.set(4, 9, -8);
+scene.add(new THREE.GridHelper(8, 16, 0x66788c, 0x3a4756));
+
+const hero = new Hero(scene);
+await hero.load();
+hero.speedRatio = 0.85;
+
+renderer.setSize(tile * phases.length, tile * rows.length, false);
+renderer.setPixelRatio(1);
+const cam = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+const cams = {
+  side: [4.6, 1.4, 0], front: [0, 1.4, -4.6], q: [3.2, 1.9, -3.2], back: [0, 1.4, 4.6],
+};
+cam.position.set(...cams[view]);
+cam.lookAt(0, 1.05, 0);
+cam.updateProjectionMatrix();
+
+function applyPartial(mode, phase) {
+  hero.resetPose();
+  hero.runPhase = phase;
+  if (mode === 'rest') return;
+  if (mode === 'run') { hero.poseRun(0.016); return; }
+  // Pose everything then undo the groups we do not want
+  hero.poseRun(0.016);
+  const keep = {
+    legs: ['lThigh', 'rThigh', 'lCalf', 'rCalf', 'lFoot', 'rFoot'],
+    arms: ['lArm', 'rArm', 'lForearm', 'rForearm', 'lClavicle', 'rClavicle', 'lHand', 'rHand'],
+    spine: ['spine', 'spine1', 'spine2', 'neck', 'head'],
+  }[mode] || [];
+  for (const k in hero.bones) {
+    if (!keep.includes(k) && hero.bones[k] && hero.rest[k]) hero.bones[k].quaternion.copy(hero.rest[k]);
+  }
+}
+
+rows.forEach((mode, r) => {
+  phases.forEach((phase, c) => {
+    applyPartial(mode, phase);
+    hero.root.position.set(0, 0, 0);
+    renderer.setViewport(c * tile, (rows.length - 1 - r) * tile, tile, tile);
+    renderer.setScissor(c * tile, (rows.length - 1 - r) * tile, tile, tile);
+    renderer.setScissorTest(true);
+    renderer.render(scene, cam);
+  });
+});
+window.__info = { rows, phases };
+window.__ready = true;
+</script>
+</body>
+</html>

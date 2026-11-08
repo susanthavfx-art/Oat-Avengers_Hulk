@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Skeleton Axis Probe</title>
+<style>html,body{margin:0;background:#111;overflow:hidden}canvas{display:block}</style>
+</head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '../vendor/three/addons/loaders/GLTFLoader.js';
+
+const p = new URLSearchParams(location.search);
+// prefix filter selects a limb chain to reduce clutter
+const BONES = (p.get('bones') || '').split(',').filter(Boolean);
+const ANGLE = +(p.get('ang') || 45) * Math.PI / 180;
+const VIEW = p.get('view') || 'side';
+const TILE = 320;
+const ANG = +(p.get('angle') || 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(1);
+renderer.setSize(TILE * 4, TILE * Math.max(1, BONES.length), false);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1b2733);
+
+const gltf = await new GLTFLoader().loadAsync('../Model.glb');
+const model = gltf.scene;
+scene.add(model);
+
+const bones = {};
+model.traverse(o => { if (o.isBone) bones[o.name] = o; });
+const rest = {}, restPos = {};
+for (const k in bones) { rest[k] = bones[k].quaternion.clone(); restPos[k] = bones[k].position.clone(); }
+
+model.updateMatrixWorld(true);
+const qParentWorld = {};
+for (const k in bones) {
+  const pw = new THREE.Quaternion();
+  if (bones[k].parent) bones[k].parent.getWorldQuaternion(pw);
+  qParentWorld[k] = pw;
+}
+
+// joint spheres built fresh each render
+const jointGroup = new THREE.Group(); scene.add(jointGroup);
+function buildJoints(filterNames) {
+  while (jointGroup.children.length) jointGroup.remove(jointGroup.children[0]);
+  for (const k in bones) {
+    if (filterNames && filterNames.length && !filterNames.some(f => k.startsWith(f))) continue;
+    const b = bones[k];
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffdd44 }));
+    b.getWorldPosition(s.position);
+    jointGroup.add(s);
+  }
+}
+
+function rotWorldAxis(boneName, axisWorld, angle) {
+  const b = bones[boneName];
+  if (!b) return;
+  const inv = qParentWorld[boneName].clone().invert();
+  const ax = axisWorld.clone().applyQuaternion(inv).normalize();
+  const dq = new THREE.Quaternion().setFromAxisAngle(ax, angle);
+  b.quaternion.copy(rest[boneName]).premultiply(dq);
+}
+
+const prefixes = p.get('prefix') ? p.get('prefix').split('|') : null;
+const camPos = { front: [0, 1.15, -4.2], side: [4.2, 1.15, 0], back: [0, 1.15, 4.2], q: [3, 1.8, -3] }[VIEW];
+const cam = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+cam.position.set(...camPos); cam.lookAt(0, 1.0, 0); cam.updateProjectionMatrix();
+
+function draw(col, row) {
+  model.updateMatrixWorld(true);
+  buildJoints(prefixes);
+  const holder = new THREE.Group();
+  for (const k in bones) {
+    if (prefixes && !prefixes.some(f => k.startsWith(f))) continue;
+    const b = bones[k];
+    const next = b.children.find(c => c.isBone);
+    if (!next) continue;
+    const a = new THREE.Vector3(), c2 = new THREE.Vector3();
+    b.getWorldPosition(a); next.getWorldPosition(c2);
+    const g = new THREE.BufferGeometry().setFromPoints([a, c2]);
+    const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x66ccff }));
+    holder.add(line);
+  }
+  scene.add(holder);
+  const y = (Math.max(1, BONES.length) - 1 - row) * TILE;
+  renderer.setViewport(col * TILE, y, TILE, TILE);
+  renderer.setScissor(col * TILE, y, TILE, TILE);
+  renderer.setScissorTest(true);
+  renderer.render(scene, cam);
+  scene.remove(holder);
+  holder.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+}
+
+const axes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
+BONES.forEach((bn, r) => {
+  [null, ...axes].forEach((ax, c) => {
+    for (const k in bones) bones[k].quaternion.copy(rest[k]);
+    if (ax) rotWorldAxis(bn, ax, ANGLE);
+    draw(c, r);
+  });
+});
+window.__info = { bones: BONES, angleDeg: ANGLE * 180 / Math.PI, view: VIEW, cols: ['rest', '+X', '+Y', '+Z'], prefixes };
+window.__ready = true;
+</script>
+</body>
+</html>

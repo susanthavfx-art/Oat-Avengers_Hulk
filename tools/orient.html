@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Orient Test</title>
+<style>html,body{margin:0;background:#111;overflow:hidden}canvas{display:block}</style>
+</head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '../vendor/three/addons/loaders/GLTFLoader.js';
+
+const TILE = 340;
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(1);
+renderer.setSize(TILE * 2, TILE, false);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x223344);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x556677, 2.6));
+const dl = new THREE.DirectionalLight(0xffffff, 1.6); dl.position.set(2, 5, -4); scene.add(dl);
+scene.add(new THREE.GridHelper(6, 12, 0x667788, 0x445566));
+
+// red cone at +Z, green cone at -Z
+const mk = (c, z) => { const m = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.6, 12), new THREE.MeshBasicMaterial({ color: c })); m.position.set(1.2, 0.3, z); scene.add(m); };
+mk(0xff0000, 1.6); mk(0x00ff00, -1.6);
+
+const gltf = await new GLTFLoader().loadAsync('../Model.glb');
+const model = gltf.scene; scene.add(model);
+const box = new THREE.Box3().setFromObject(model);
+const size = new THREE.Vector3(); box.getSize(size);
+const center = new THREE.Vector3(); box.getCenter(center);
+
+// print bone positions
+const boneInfo = {};
+model.updateMatrixWorld(true);
+const v = new THREE.Vector3();
+['Bip001 Head_020', 'Bip001 Pelvis_03', 'Bip001 L Toe0_08', 'Bip001 L Hand_025'].forEach(n => {
+  const b = model.getObjectByName(n);
+  if (b) { b.getWorldPosition(v); boneInfo[n] = v.toArray().map(x => +x.toFixed(2)); }
+});
+
+const cam = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+[[0, 1.2, -4.5], [0, 1.2, 4.5], [4.5, 1.2, 0], [2.6, 1.9, -2.6]].forEach((pos, i) => {
+  if (i > 1) return;
+  renderer.setViewport(i * TILE, 0, TILE, TILE);
+  renderer.setScissor(i * TILE, 0, TILE, TILE);
+  renderer.setScissorTest(true);
+  cam.position.set(...pos); cam.lookAt(0, 1.0, 0); cam.updateProjectionMatrix();
+  renderer.render(scene, cam);
+});
+window.__info = { size: size.toArray().map(x => +x.toFixed(2)), center: center.toArray().map(x => +x.toFixed(2)), boneInfo };
+window.__ready = true;
+</script>
+</body>
+</html>
