@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Hero Stage</title>
+<style>html,body{margin:0;background:#151019;overflow:hidden}canvas{display:block}</style>
+</head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { createRenderer, createScene, createLighting } from '../src/game/renderer.js';
+import { Hero } from '../src/game/hero.js';
+
+const p = new URLSearchParams(location.search);
+const view = p.get('view') || 'side';
+const phase = parseFloat(p.get('phase') || '0');
+const smashList = (p.get('smash') || '-1').split(',').map(Number);
+const speed = parseFloat(p.get('speed') || '0.8');
+const tile = +(p.get('tile') || 320);
+const times = (p.get('times') || '0').split(',').map(Number);
+const air = p.get('air') === '1';
+
+const canvas = document.createElement('canvas');
+document.body.appendChild(canvas);
+const renderer = createRenderer(canvas);
+const scene = createScene();
+scene.background = new THREE.Color(0x39465a);
+const Ls = createLighting(scene);
+Ls.hemi.intensity = 2.6; Ls.sun.intensity = 2.8; Ls.sun.position.set(5, 9, -7); Ls.fill.intensity = 1.2; Ls.rim.intensity = 0;
+scene.add(new THREE.GridHelper(8, 16, 0x4a5568, 0x2a3340));
+
+const hero = new Hero(scene);
+await hero.load();
+hero.speedRatio = speed;
+
+const cols = times.length;
+renderer.setSize(tile * cols, tile, false);
+renderer.setPixelRatio(1);
+const cam = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+const cams = {
+  side: [4.2, 1.5, 0], front: [0, 1.5, -4.2], q: [3, 1.9, -3], back: [0, 1.5, 4.2], close: [2.4, 1.9, -2.2],
+};
+const cp = cams[view];
+cam.position.set(...cp);
+cam.lookAt(0, 1.15, 0);
+cam.updateProjectionMatrix();
+
+for (let c = 0; c < cols; c++) {
+  hero.runPhase = times[c] % 1;
+  hero.grounded = !air;
+  hero.vy = air ? 6 : 0;
+  const smashAt = smashList[c] !== undefined ? smashList[c] : smashList[0];
+  hero.smashTimer = smashAt >= 0 ? smashAt : 0;
+  hero.ready = true;
+  // pose without advancing phase
+  // simulate N updates so the mixer settles, then freeze at the wanted phase
+  hero.runPhase = times[c] % 1;
+  hero.grounded = !air;
+  hero.vy = air ? 6 : 0;
+  hero.airBlend = air ? 1 : 0;
+  hero.reelTimer = 0;
+  hero.runAction.time = times[c] * hero.runDuration;
+  hero.mixer.update(0.0);
+  if (hero.smashTimer > 0) {
+    const total = 0.62;
+    const p2 = Math.min(0.999, 1 - hero.smashTimer / total);
+    hero.airBlend = 0;
+    const pose = hero._capturePose(() => hero._smashPose(p2), ['pelvis','lThigh','rThigh','lCalf','rCalf','lFoot','rFoot']);
+    hero._blendToward(pose, 1);
+  } else {
+    hero.overlayAir(0.016);
+  }
+  hero.root.position.set(0, air ? 1.1 : 0, 0);
+  hero.model.position.set(0, 0, 0);
+  renderer.setViewport(c * tile, 0, tile, tile);
+  renderer.setScissor(c * tile, 0, tile, tile);
+  renderer.setScissorTest(true);
+  renderer.render(scene, cam);
+}
+window.__info = { dur: hero.runDuration, missing: Object.entries(hero.bones).filter(([k,v])=>!v).map(([k])=>k) };
+window.__ready = true;
+</script>
+</body>
+</html>

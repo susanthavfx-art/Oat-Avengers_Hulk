@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Axis Numeric</title></head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '../vendor/three/addons/loaders/GLTFLoader.js';
+
+const gltf = await new GLTFLoader().loadAsync('../Model.glb');
+const model = gltf.scene;
+model.updateMatrixWorld(true);
+const bones = {};
+model.traverse(o => { if (o.isBone) bones[o.name] = o; });
+const rest = {};
+for (const k in bones) rest[k] = bones[k].quaternion.clone();
+const qParentWorld = {};
+for (const k in bones) {
+  const pw = new THREE.Quaternion();
+  if (bones[k].parent) bones[k].parent.getWorldQuaternion(pw);
+  qParentWorld[k] = pw;
+}
+
+const set = (k) => { for (const n in bones) bones[n].quaternion.copy(rest[n]); };
+const tipOf = (name) => {
+  const b = bones[name];
+  const kid = b.children.find(c => c.isBone);
+  return kid ? kid.name : null;
+};
+const wp = (name) => { model.updateMatrixWorld(true); const v = new THREE.Vector3(); bones[name].getWorldPosition(v); return v; };
+
+function rotAxis(bn, ax, ang) {
+  const inv = qParentWorld[bn].clone().invert();
+  const a = ax.clone().applyQuaternion(inv).normalize();
+  bones[bn].quaternion.copy(rest[bn]).premultiply(new THREE.Quaternion().setFromAxisAngle(a, ang));
+}
+
+const out = {};
+const names = Object.keys(bones);
+const ANG = Math.PI / 3; // 60deg to exaggerate
+for (const bn of names) {
+  if (!/UpperArm_02[34]|Forearm_02[04]|Thigh_0(5|11)|Calf_0(6|12)|Spine|Neck|Pelvis|UpperArm_04/.test(bn)) continue;
+  const tip = tipOf(bn);
+  if (!tip) continue;
+  set();
+  const p0j = wp(bn), p0t = wp(tip);
+  const base = p0t.clone().sub(p0j);
+  const row = { joint: p0j.toArray().map(v => +v.toFixed(2)), base: base.toArray().map(v => +v.toFixed(2)), deltas: {} };
+  for (const [an, ax] of [['X', new THREE.Vector3(1, 0, 0)], ['Y', new THREE.Vector3(0, 1, 0)], ['Z', new THREE.Vector3(0, 0, 1)]]) {
+    set();
+    rotAxis(bn, ax, ANG);
+    const d = wp(tip).sub(p0j).toArray().map(v => +v.toFixed(2));
+    row.deltas['+' + an] = d;
+    set();
+    rotAxis(bn, ax, -ANG);
+    const d2 = wp(tip).sub(p0j).toArray().map(v => +v.toFixed(2));
+    row.deltas['-' + an] = d2;
+  }
+  out[bn] = row;
+}
+set();
+window.__info = out;
+window.__ready = true;
+</script>
+</body>
+</html>

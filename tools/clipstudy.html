@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Clip Study</title>
+<style>html,body{margin:0;background:#111;overflow:hidden}canvas{display:block}
+#lbl{position:fixed;left:4px;top:2px;color:#0f0;font:11px monospace;z-index:9}</style>
+</head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '../vendor/three/addons/loaders/GLTFLoader.js';
+
+const p = new URLSearchParams(location.search);
+const TILE = +(p.get('tile') || 300);
+const camMode = p.get('cam') || 'front';
+const clipFilter = p.get('clips') || '';
+const times = (p.get('times') || '0,0.25,0.5,0.75,1').split(',').map(Number);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x223344);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x556677, 2.4));
+const dl = new THREE.DirectionalLight(0xffffff, 1.8); dl.position.set(2, 5, -4); scene.add(dl);
+const grid = new THREE.GridHelper(6, 12, 0x667788, 0x445566); scene.add(grid);
+
+const gltf = await new GLTFLoader().loadAsync('../Model.glb');
+const model = gltf.scene; scene.add(model);
+let clips = gltf.animations;
+const _lbl = document.getElementById('lbl');
+if (clipFilter) clips = clips.filter(c => clipFilter.split('|').some(f => c.name.includes(f)));
+
+const camPos = {
+  front: [0, 1.05, -3.6],
+  back: [0, 1.05, 3.6],
+  side: [3.6, 1.05, 0],
+  q: [2.4, 1.6, -2.6],
+  q2: [-2.4, 1.6, -2.6],
+}[camMode];
+
+const cols = times.length, rows = clips.length;
+renderer.setSize(cols * TILE, rows * TILE);
+const cam = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+
+const mixer = new THREE.AnimationMixer(model);
+const actions = clips.map(c => mixer.clipAction(c));
+
+for (let r = 0; r < rows; r++) {
+  for (let c = 0; c < cols; c++) {
+    actions.forEach(a => a.stop());
+    mixer.stopAllAction();
+    const a = actions[r];
+    a.reset(); a.play();
+    mixer.setTime(times[c] * clips[r].duration);
+    model.updateMatrixWorld(true);
+    renderer.setViewport(c * TILE, (rows - 1 - r) * TILE, TILE, TILE);
+    renderer.setScissor(c * TILE, (rows - 1 - r) * TILE, TILE, TILE);
+    renderer.setScissorTest(true);
+    cam.aspect = 1; cam.position.set(...camPos); cam.lookAt(0, 0.95, 0);
+    cam.updateProjectionMatrix();
+    renderer.render(scene, cam);
+  }
+}
+// labels drawn with DOM? just report names in order
+window.__info = { clips: clips.map(c => c.name + ' ' + c.duration.toFixed(2)), times };
+if (_lbl) _lbl.textContent = clips.map((c, i) => i + ': ' + c.name.split('@')[1]).join('  ');
+window.__ready = true;
+</script>
+</body>
+</html>

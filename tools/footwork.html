@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Footwork</title></head>
+<body>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from '../vendor/three/addons/loaders/GLTFLoader.js';
+
+const p = new URLSearchParams(location.search);
+const part = p.get('clip') || 'dash';
+const gltf = await new GLTFLoader().loadAsync('../Model.glb');
+const model = gltf.scene;
+const bones = {};
+model.traverse(o => { if (o.isBone) bones[o.name] = o; });
+const clip = gltf.animations.find(c => c.name.includes(part));
+const mixer = new THREE.AnimationMixer(model);
+mixer.clipAction(clip).play();
+
+const L = bones['Bip001_L_Toe0_08'], R = bones['Bip001_R_Toe0_014'];
+const H = bones['Bip001_Head_020'];
+const rows = [];
+const N = 25;
+for (let i = 0; i < N; i++) {
+  const t = (i / (N - 1)) * (clip.duration - 1e-4);
+  mixer.setTime(t);
+  model.updateMatrixWorld(true);
+  const l = new THREE.Vector3(); L.getWorldPosition(l);
+  const r = new THREE.Vector3(); R.getWorldPosition(r);
+  const h = new THREE.Vector3(); H.getWorldPosition(h);
+  rows.push({ t: +t.toFixed(3), lz: +l.z.toFixed(2), ly: +l.y.toFixed(2), rz: +r.z.toFixed(2), ry: +r.y.toFixed(2), hy: +h.y.toFixed(2) });
+}
+window.__info = { clip: clip.name, dur: clip.duration, rows };
+window.__ready = true;
+</script>
+</body>
+</html>
