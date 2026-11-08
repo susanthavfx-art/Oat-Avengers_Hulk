@@ -135,9 +135,9 @@ export function createWorld(scene, { anisotropy = 4 } = {}) {
   // gritty shoulders either side of the street
   const rubTex = makeRubbleFieldTexture(512, 21);
   rubTex.wrapS = rubTex.wrapT = THREE.RepeatWrapping;
-  rubTex.repeat.set(4, 60);
+  rubTex.repeat.set(3, 26);
   rubTex.anisotropy = anisotropy;
-  const shoulderMat = new THREE.MeshStandardMaterial({ map: rubTex, roughness: 0.98, metalness: 0 });
+  const shoulderMat = new THREE.MeshStandardMaterial({ map: rubTex, color: 0x8b8681, roughness: 0.98, metalness: 0 });
   for (const side of [-1, 1]) {
     const g2 = new THREE.PlaneGeometry(46, 620, 1, 1);
     g2.rotateX(-Math.PI / 2);
@@ -214,6 +214,7 @@ export function createWorld(scene, { anisotropy = 4 } = {}) {
   });
 
   const buildingPool = [];
+  const windowSpecs = []; // instanced glow quads (1 draw call for the whole city)
   const BUILDINGS = 26;
   for (let i = 0; i < BUILDINGS; i++) {
     const side = i % 2 === 0 ? -1 : 1;
@@ -228,6 +229,20 @@ export function createWorld(scene, { anisotropy = 4 } = {}) {
     mesh.rotation.y = rng.range(-0.18, 0.18);
     group.add(mesh);
 
+    // lit windows facing the road
+    const windowRows = Math.floor(h / 3.2);
+    const litCount = Math.max(1, Math.floor(windowRows * rng.range(0.25, 0.6)));
+    for (let k = 0; k < litCount; k++) {
+      const facing = -side;
+      windowSpecs.push({
+        parent: mesh,
+        x: facing * (w / 2 + 0.04),
+        y: rng.range(-h / 2 + 1.5, h / 2 - 1.5),
+        z: rng.range(-d / 2 + 1, d / 2 - 1),
+        ry: facing > 0 ? Math.PI / 2 : -Math.PI / 2,
+      });
+    }
+
     // add a broken top chunk for silhouette interest
     if (rng.chance(0.6)) {
       const cw = w * rng.range(0.3, 0.6);
@@ -239,21 +254,34 @@ export function createWorld(scene, { anisotropy = 4 } = {}) {
       mesh.add(chunk);
     }
 
-    // a few glowing windows as points of light — cheap emissive quads
-    const windowRows = Math.floor(h / 3.2);
-    const litCount = Math.max(1, Math.floor(windowRows * rng.range(0.2, 0.5)));
-    for (let k = 0; k < litCount; k++) {
-      const q = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.8), windowMats);
-      const yy = rng.range(-h / 2 + 1.5, h / 2 - 1.5);
-      const facing = -side; // face toward the road
-      q.position.set(facing * (w / 2 + 0.03), yy, rng.range(-d / 2 + 1, d / 2 - 1));
-      q.rotation.y = facing > 0 ? Math.PI / 2 : -Math.PI / 2;
-      mesh.add(q);
-    }
     buildingPool.push(mesh);
   }
+  const windowGeo = new THREE.PlaneGeometry(0.55, 0.8);
+  const windowMesh = new THREE.InstancedMesh(windowGeo, windowMats, Math.max(1, windowSpecs.length));
+  windowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  windowMesh.frustumCulled = false;
+  group.add(windowMesh);
+  const winM = new THREE.Matrix4();
+  const winQ = new THREE.Quaternion();
+  const winS = new THREE.Vector3(1, 1, 1);
+  const winP = new THREE.Vector3();
+  const winE = new THREE.Euler();
+  windowSpecs.forEach((spec, i) => {
+    spec.offset = new THREE.Vector3(spec.x, spec.y, spec.z);
+  });
   updaters.push(() => {
     for (const b of buildingPool) wrapAround(b, 0, FRAME);
+    for (let i = 0; i < windowSpecs.length; i++) {
+      const spec = windowSpecs[i];
+      spec.offset.set(spec.x, spec.y, spec.z);
+      spec.parent.localToWorld(spec.offset);
+      winP.copy(spec.offset);
+      winE.set(0, spec.parent.rotation.y + spec.ry, 0);
+      winQ.setFromEuler(winE);
+      winM.compose(winP, winQ, winS);
+      windowMesh.setMatrixAt(i, winM);
+    }
+    windowMesh.instanceMatrix.needsUpdate = true;
   });
 
   // -------------------------------------------------- leaning rubble piles ---
@@ -346,10 +374,15 @@ export function createWorld(scene, { anisotropy = 4 } = {}) {
     flame.scale.set(2.2, 3.0, 1);
     flame.position.copy(b.position).add(new THREE.Vector3(0, 1.1, 0));
     group.add(flame);
+    barrels.push({ b, flame, phase: rng() * TAU, base: b.position.x });
+  }
+  // Only a few real point lights exist; they hop to whichever barrels are
+  // nearest the player (keeps the shader light count low on mobile GPUs).
+  const barrelLights = [];
+  for (let i = 0; i < 3; i++) {
     const light = new THREE.PointLight(0xff8a3a, 14, 16, 2);
-    light.position.copy(b.position).add(new THREE.Vector3(0, 1.4, 0));
     group.add(light);
-    barrels.push({ b, flame, light, phase: rng() * TAU, base: b.position.x });
+    barrelLights.push(light);
   }
   updaters.push((dt, pz, time) => {
     for (const bl of barrels) {
@@ -358,10 +391,23 @@ export function createWorld(scene, { anisotropy = 4 } = {}) {
       bl.flame.position.set(bl.b.position.x, 1.5 + Math.sin(time * 9 + bl.phase) * 0.08, relz);
       const f = 0.86 + Math.sin(time * 13 + bl.phase) * 0.1 + Math.sin(time * 27 + bl.phase * 2) * 0.05;
       bl.flame.scale.set(2.2 * f, 3.1 * f, 1);
-      bl.light.position.set(bl.b.position.x, 1.6, relz);
-      bl.light.intensity = 12 + Math.sin(time * 17 + bl.phase) * 3.5;
-      void pz;
     }
+    // hand the three lights to the closest barrels
+    const nearest = barrels
+      .map((bl) => ({ bl, d: Math.abs(bl.b.position.z) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, barrelLights.length);
+    barrelLights.forEach((light, i) => {
+      const hit = nearest[i];
+      if (!hit || hit.d > 90) {
+        light.visible = false;
+        return;
+      }
+      light.visible = true;
+      light.position.set(hit.bl.b.position.x, 1.6, hit.bl.b.position.z);
+      light.intensity = 12 + Math.sin(time * 17 + hit.bl.phase) * 3.5;
+    });
+    void dt; void pz;
   });
 
   // -------------------------------------------------------- smoke & dust ----
